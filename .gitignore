@@ -1,0 +1,44 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+pom.xml.bak
+release.properties
+dependency-reduced-pom.xml
+.flattened-pom.xml
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Gradle (if added later)
+.gradle
+build/
+
+# Spring Boot
+*.log
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.h2.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+*.pid
+*.pid.lock

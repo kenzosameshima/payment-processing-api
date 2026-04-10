@@ -1,0 +1,12 @@
+target/
+src/
+pom.xml
+.gitignore
+.editorconfig
+README.md
+CONTRIBUTING.md
+CHANGELOG.md
+.git
+.github
+*.log
+.DS_Store
