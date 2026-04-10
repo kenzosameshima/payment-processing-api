@@ -217,7 +217,6 @@ GitHub Actions workflows:
 
 ## Future Enhancements
 
-Recommended for production:
 - [ ] Authentication & authorization (Spring Security + OAuth 2.0)
 - [ ] API rate limiting & throttling
 - [ ] Structured logging (SLF4J + ELK)
