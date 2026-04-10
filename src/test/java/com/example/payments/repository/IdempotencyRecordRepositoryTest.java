@@ -2,6 +2,7 @@ package com.example.payments.repository;
 
 import com.example.payments.domain.IdempotencyOperation;
 import com.example.payments.domain.IdempotencyRecord;
+import com.example.payments.domain.IdempotencyRecordStatus;
 import com.example.payments.domain.Payment;
 import com.example.payments.domain.PaymentStatus;
 import org.junit.jupiter.api.Test;
@@ -36,9 +37,10 @@ class IdempotencyRecordRepositoryTest {
         IdempotencyRecord record = new IdempotencyRecord();
         record.setOperation(IdempotencyOperation.CREATE_PAYMENT);
         record.setIdempotencyKey("idem-a");
-        record.setRequestHash("hash-a");
+        record.setStatus(IdempotencyRecordStatus.COMPLETED);
         record.setPaymentId(payment.getId());
         record.setCreatedAt(OffsetDateTime.now());
+        record.setUpdatedAt(OffsetDateTime.now());
 
         idempotencyRecordRepository.saveAndFlush(record);
 
@@ -56,16 +58,18 @@ class IdempotencyRecordRepositoryTest {
         IdempotencyRecord first = new IdempotencyRecord();
         first.setOperation(IdempotencyOperation.AUTHORIZE_PAYMENT);
         first.setIdempotencyKey("idem-duplicate");
-        first.setRequestHash("hash-1");
+        first.setStatus(IdempotencyRecordStatus.PROCESSING);
         first.setPaymentId(payment.getId());
         first.setCreatedAt(OffsetDateTime.now());
+        first.setUpdatedAt(OffsetDateTime.now());
 
         IdempotencyRecord second = new IdempotencyRecord();
         second.setOperation(IdempotencyOperation.AUTHORIZE_PAYMENT);
         second.setIdempotencyKey("idem-duplicate");
-        second.setRequestHash("hash-2");
+        second.setStatus(IdempotencyRecordStatus.COMPLETED);
         second.setPaymentId(payment.getId());
         second.setCreatedAt(OffsetDateTime.now());
+        second.setUpdatedAt(OffsetDateTime.now());
 
         idempotencyRecordRepository.saveAndFlush(first);
 

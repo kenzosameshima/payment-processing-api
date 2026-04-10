@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -42,6 +43,10 @@ public class Payment {
 
     @Column(name = "settled_at")
     private OffsetDateTime settledAt;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     public UUID getId() {
         return id;
@@ -113,5 +118,13 @@ public class Payment {
 
     public void setSettledAt(OffsetDateTime settledAt) {
         this.settledAt = settledAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

@@ -22,29 +22,21 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final IdempotencyService idempotencyService;
-    private final HashingService hashingService;
     private final PaymentMapper paymentMapper;
 
     public PaymentService(PaymentRepository paymentRepository,
                           IdempotencyService idempotencyService,
-                          HashingService hashingService,
                           PaymentMapper paymentMapper) {
         this.paymentRepository = paymentRepository;
         this.idempotencyService = idempotencyService;
-        this.hashingService = hashingService;
         this.paymentMapper = paymentMapper;
     }
 
     @Transactional
     public PaymentResponse createPayment(CreatePaymentRequest request, String idempotencyKey) {
-        String requestHash = hashingService.sha256(
-                request.getMerchantReference() + "|" + request.getAmount() + "|" + request.getCurrency()
-        );
-
         Payment payment = idempotencyService.execute(
                 IdempotencyOperation.CREATE_PAYMENT,
                 idempotencyKey,
-                requestHash,
                 () -> createPaymentInternal(request)
         );
 
@@ -55,12 +47,9 @@ public class PaymentService {
     public PaymentResponse authorizePayment(UUID paymentId,
                                             AuthorizePaymentRequest request,
                                             String idempotencyKey) {
-        String requestHash = hashingService.sha256(paymentId + "|" + request.getAuthorizationCode());
-
         Payment payment = idempotencyService.execute(
                 IdempotencyOperation.AUTHORIZE_PAYMENT,
                 idempotencyKey,
-                requestHash,
                 () -> authorizePaymentInternal(paymentId)
         );
 
@@ -71,12 +60,9 @@ public class PaymentService {
     public PaymentResponse settlePayment(UUID paymentId,
                                          SettlePaymentRequest request,
                                          String idempotencyKey) {
-        String requestHash = hashingService.sha256(paymentId + "|" + request.getSettlementReference());
-
         Payment payment = idempotencyService.execute(
                 IdempotencyOperation.SETTLE_PAYMENT,
                 idempotencyKey,
-                requestHash,
                 () -> settlePaymentInternal(paymentId)
         );
 

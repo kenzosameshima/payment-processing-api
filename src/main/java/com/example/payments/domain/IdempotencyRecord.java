@@ -27,14 +27,18 @@ public class IdempotencyRecord {
     @Column(name = "idempotency_key", nullable = false, length = 128)
     private String idempotencyKey;
 
-    @Column(name = "request_hash", nullable = false, length = 64)
-    private String requestHash;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private IdempotencyRecordStatus status;
 
-    @Column(name = "payment_id", nullable = false)
+    @Column(name = "payment_id")
     private UUID paymentId;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
 
     public Long getId() {
         return id;
@@ -56,12 +60,12 @@ public class IdempotencyRecord {
         this.idempotencyKey = idempotencyKey;
     }
 
-    public String getRequestHash() {
-        return requestHash;
+    public IdempotencyRecordStatus getStatus() {
+        return status;
     }
 
-    public void setRequestHash(String requestHash) {
-        this.requestHash = requestHash;
+    public void setStatus(IdempotencyRecordStatus status) {
+        this.status = status;
     }
 
     public UUID getPaymentId() {
@@ -78,5 +82,13 @@ public class IdempotencyRecord {
 
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(OffsetDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }

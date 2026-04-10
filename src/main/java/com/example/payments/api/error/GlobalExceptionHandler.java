@@ -1,12 +1,14 @@
 package com.example.payments.api.error;
 
 import com.example.payments.service.exception.IdempotencyConflictException;
+import com.example.payments.service.exception.IdempotencyRequestInProgressException;
 import com.example.payments.service.exception.InvalidPaymentStateException;
 import com.example.payments.service.exception.MissingIdempotencyKeyException;
 import com.example.payments.service.exception.PaymentNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
@@ -43,10 +45,20 @@ public class GlobalExceptionHandler {
                                                                HttpServletRequest request) {
         return build(HttpStatus.CONFLICT,
                 "IDEMPOTENCY_KEY_CONFLICT",
-                "Idempotent request payload does not match previous request for this key",
+            "Idempotency key conflict",
                 request,
                 List.of(ex.getMessage()));
     }
+
+        @ExceptionHandler(IdempotencyRequestInProgressException.class)
+        public ResponseEntity<ApiError> handleIdempotencyInProgress(IdempotencyRequestInProgressException ex,
+                                     HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT,
+            "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+            "An idempotent request with this key is currently being processed",
+            request,
+            List.of(ex.getMessage()));
+        }
 
     @ExceptionHandler(PaymentNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(PaymentNotFoundException ex, HttpServletRequest request) {
@@ -62,6 +74,16 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNPROCESSABLE_ENTITY,
                 "INVALID_PAYMENT_STATE",
                 "Payment transition is not allowed",
+                request,
+                List.of(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleConcurrentModification(ObjectOptimisticLockingFailureException ex,
+                                                                  HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT,
+                "CONCURRENT_MODIFICATION",
+                "Payment was modified concurrently, please retry",
                 request,
                 List.of(ex.getMessage()));
     }

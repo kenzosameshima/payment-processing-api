@@ -4,14 +4,11 @@ import com.example.payments.api.dto.AuthorizePaymentRequest;
 import com.example.payments.api.dto.CreatePaymentRequest;
 import com.example.payments.api.dto.PaymentResponse;
 import com.example.payments.api.dto.SettlePaymentRequest;
-import com.example.payments.domain.IdempotencyOperation;
-import com.example.payments.domain.Payment;
 import com.example.payments.domain.PaymentStatus;
 import com.example.payments.repository.IdempotencyRecordRepository;
 import com.example.payments.repository.PaymentRepository;
 import com.example.payments.service.exception.InvalidPaymentStateException;
 import com.example.payments.service.exception.PaymentNotFoundException;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -19,7 +16,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @DataJpaTest
-@Import({PaymentService.class, IdempotencyService.class, HashingService.class, PaymentMapper.class})
+@Import({PaymentService.class, IdempotencyService.class, PaymentMapper.class})
 @ActiveProfiles("test")
 class PaymentServiceTest {
 

@@ -2,10 +2,12 @@ package com.example.payments.service;
 
 import com.example.payments.domain.IdempotencyOperation;
 import com.example.payments.domain.IdempotencyRecord;
+import com.example.payments.domain.IdempotencyRecordStatus;
 import com.example.payments.domain.Payment;
 import com.example.payments.repository.IdempotencyRecordRepository;
 import com.example.payments.repository.PaymentRepository;
 import com.example.payments.service.exception.IdempotencyConflictException;
+import com.example.payments.service.exception.IdempotencyRequestInProgressException;
 import com.example.payments.service.exception.PaymentNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -49,12 +52,14 @@ class IdempotencyServiceTest {
         IdempotencyRecord record = new IdempotencyRecord();
         record.setOperation(IdempotencyOperation.CREATE_PAYMENT);
         record.setIdempotencyKey("idem-1");
-        record.setRequestHash("same-hash");
+                record.setStatus(IdempotencyRecordStatus.COMPLETED);
         record.setPaymentId(paymentId);
 
         Payment existingPayment = new Payment();
         existingPayment.setId(paymentId);
 
+        when(idempotencyRecordRepository.saveAndFlush(any(IdempotencyRecord.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
         when(idempotencyRecordRepository.findByOperationAndIdempotencyKey(IdempotencyOperation.CREATE_PAYMENT, "idem-1"))
                 .thenReturn(Optional.of(record));
         when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(existingPayment));
@@ -62,7 +67,6 @@ class IdempotencyServiceTest {
         Payment result = idempotencyService.execute(
                 IdempotencyOperation.CREATE_PAYMENT,
                 "idem-1",
-                "same-hash",
                 Payment::new
         );
 
@@ -72,12 +76,14 @@ class IdempotencyServiceTest {
     }
 
     @Test
-    void shouldRejectReplayWhenPayloadHashDiffers() {
+    void shouldRejectReplayWhenRecordHasNoPaymentId() {
         IdempotencyRecord record = new IdempotencyRecord();
         record.setOperation(IdempotencyOperation.CREATE_PAYMENT);
         record.setIdempotencyKey("idem-1");
-        record.setRequestHash("old-hash");
+        record.setStatus(IdempotencyRecordStatus.COMPLETED);
 
+        when(idempotencyRecordRepository.saveAndFlush(any(IdempotencyRecord.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
         when(idempotencyRecordRepository.findByOperationAndIdempotencyKey(IdempotencyOperation.CREATE_PAYMENT, "idem-1"))
                 .thenReturn(Optional.of(record));
 
@@ -85,7 +91,6 @@ class IdempotencyServiceTest {
                 () -> idempotencyService.execute(
                         IdempotencyOperation.CREATE_PAYMENT,
                         "idem-1",
-                        "new-hash",
                         Payment::new
                 ));
     }
@@ -97,9 +102,11 @@ class IdempotencyServiceTest {
         IdempotencyRecord record = new IdempotencyRecord();
         record.setOperation(IdempotencyOperation.AUTHORIZE_PAYMENT);
         record.setIdempotencyKey("idem-auth");
-        record.setRequestHash("auth-hash");
+        record.setStatus(IdempotencyRecordStatus.COMPLETED);
         record.setPaymentId(paymentId);
 
+        when(idempotencyRecordRepository.saveAndFlush(any(IdempotencyRecord.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
         when(idempotencyRecordRepository.findByOperationAndIdempotencyKey(IdempotencyOperation.AUTHORIZE_PAYMENT, "idem-auth"))
                 .thenReturn(Optional.of(record));
         when(paymentRepository.findById(paymentId)).thenReturn(Optional.empty());
@@ -108,7 +115,6 @@ class IdempotencyServiceTest {
                 () -> idempotencyService.execute(
                         IdempotencyOperation.AUTHORIZE_PAYMENT,
                         "idem-auth",
-                        "auth-hash",
                         Payment::new
                 ));
     }
@@ -119,30 +125,28 @@ class IdempotencyServiceTest {
         Payment payment = new Payment();
         payment.setId(paymentId);
 
-        when(idempotencyRecordRepository.findByOperationAndIdempotencyKey(IdempotencyOperation.SETTLE_PAYMENT, "idem-settle"))
-                .thenReturn(Optional.empty());
         when(idempotencyRecordRepository.saveAndFlush(any(IdempotencyRecord.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         Payment result = idempotencyService.execute(
                 IdempotencyOperation.SETTLE_PAYMENT,
                 "idem-settle",
-                "settle-hash",
                 () -> payment
         );
 
         assertEquals(paymentId, result.getId());
 
         ArgumentCaptor<IdempotencyRecord> captor = ArgumentCaptor.forClass(IdempotencyRecord.class);
-        verify(idempotencyRecordRepository).saveAndFlush(captor.capture());
+        verify(idempotencyRecordRepository, atLeastOnce()).saveAndFlush(captor.capture());
         assertEquals(IdempotencyOperation.SETTLE_PAYMENT, captor.getValue().getOperation());
         assertEquals("idem-settle", captor.getValue().getIdempotencyKey());
-        assertEquals("settle-hash", captor.getValue().getRequestHash());
+        assertEquals(IdempotencyRecordStatus.COMPLETED, captor.getValue().getStatus());
         assertEquals(paymentId, captor.getValue().getPaymentId());
     }
 
     @Test
-    void shouldHandleConcurrentInsertWithSameHash() {
+    void shouldReturnConflictWhenRecordIsStillProcessing() {
         UUID paymentId = UUID.randomUUID();
         Payment payment = new Payment();
         payment.setId(paymentId);
@@ -150,23 +154,36 @@ class IdempotencyServiceTest {
         IdempotencyRecord existing = new IdempotencyRecord();
         existing.setOperation(IdempotencyOperation.CREATE_PAYMENT);
         existing.setIdempotencyKey("idem-c");
-        existing.setRequestHash("hash-c");
-        existing.setPaymentId(paymentId);
+        existing.setStatus(IdempotencyRecordStatus.PROCESSING);
         existing.setCreatedAt(OffsetDateTime.now());
 
-        when(idempotencyRecordRepository.findByOperationAndIdempotencyKey(IdempotencyOperation.CREATE_PAYMENT, "idem-c"))
-                .thenReturn(Optional.empty())
-                .thenReturn(Optional.of(existing));
         when(idempotencyRecordRepository.saveAndFlush(any(IdempotencyRecord.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
+        when(idempotencyRecordRepository.findByOperationAndIdempotencyKey(IdempotencyOperation.CREATE_PAYMENT, "idem-c"))
+                .thenReturn(Optional.of(existing));
 
-        Payment result = idempotencyService.execute(
-                IdempotencyOperation.CREATE_PAYMENT,
-                "idem-c",
-                "hash-c",
-                () -> payment
-        );
+        assertThrows(IdempotencyRequestInProgressException.class,
+                () -> idempotencyService.execute(
+                        IdempotencyOperation.CREATE_PAYMENT,
+                        "idem-c",
+                        () -> payment
+                ));
+    }
 
-        assertEquals(paymentId, result.getId());
+    @Test
+    void shouldDeleteProcessingRecordWhenBusinessFails() {
+        when(idempotencyRecordRepository.saveAndFlush(any(IdempotencyRecord.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThrows(IllegalStateException.class,
+                () -> idempotencyService.execute(
+                        IdempotencyOperation.CREATE_PAYMENT,
+                        "idem-fail",
+                        () -> {
+                            throw new IllegalStateException("boom");
+                        }
+                ));
+
+        verify(idempotencyRecordRepository).flush();
     }
 }

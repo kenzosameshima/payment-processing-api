@@ -127,16 +127,15 @@ Invalid transitions are rejected with HTTP 422.
 
 ## Idempotency Guarantees
 
-Each operation uses a deterministic request hash to ensure:
+Each operation uses operation-scoped idempotency keys and an atomic database flow:
 
-1. **Same key + Same payload** → Returns same result (no duplicate processing)
-2. **Same key + Different payload** → Returns HTTP 409 conflict
-3. **Concurrent requests** → Unique constraint prevents race conditions
+1. **First request for (operation, key)** inserts a `PROCESSING` marker row.
+2. **Only the request that inserted the marker executes business logic.**
+3. On success, marker row is updated to `COMPLETED` with the resulting `payment_id`.
+4. Retries with the same key replay the persisted result.
+5. If another request arrives while the first one is still running, API returns HTTP 409 (`IDEMPOTENCY_REQUEST_IN_PROGRESS`).
 
-Request hash computed from:
-- Create: `merchantReference | amount | currency`
-- Authorize: `paymentId | authorizationCode`
-- Settle: `paymentId | settlementReference`
+This guarantees no duplicate business execution for the same `(operation, idempotency_key)` pair under concurrency.
 
 ## Error Handling
 
@@ -154,7 +153,9 @@ All API responses include standardized error envelopes with:
 | `VALIDATION_ERROR` | 400 | Invalid input |
 | `MISSING_IDEMPOTENCY_KEY` | 400 | Missing header |
 | `PAYMENT_NOT_FOUND` | 404 | Payment not found |
-| `IDEMPOTENCY_KEY_CONFLICT` | 409 | Same key, different payload |
+| `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 409 | Same key currently processing |
+| `IDEMPOTENCY_KEY_CONFLICT` | 409 | Corrupted or inconsistent idempotency record |
+| `CONCURRENT_MODIFICATION` | 409 | Optimistic locking conflict |
 | `INVALID_PAYMENT_STATE` | 422 | State transition error |
 | `INTERNAL_SERVER_ERROR` | 500 | Server error |
 
@@ -168,14 +169,16 @@ Migrations apply automatically via Flyway on startup.
 - `amount` (NUMERIC 19,4) — Payment amount
 - `currency` (VARCHAR 3) — ISO 4217 currency code
 - `status` (VARCHAR 32) — CREATED | AUTHORIZED | SETTLED
+- `version` (BIGINT) — Optimistic locking version column
 - `created_at`, `updated_at`, `authorized_at`, `settled_at` — Timestamps
 
 **Idempotency Records Table:**
 - `id` (BIGSERIAL) — Primary key
 - `operation` (VARCHAR 32) — Operation type
 - `idempotency_key` (VARCHAR 128) — Client key
-- `request_hash` (VARCHAR 64) — SHA-256 hash
-- `payment_id` (UUID FK) — Associated payment
+- `status` (VARCHAR 16) — PROCESSING | COMPLETED
+- `payment_id` (UUID FK, nullable while PROCESSING) — Associated payment
+- `updated_at` (TIMESTAMPTZ) — Last status update timestamp
 - **Unique constraint:** `(operation, idempotency_key)`
 
 ## Testing
@@ -187,9 +190,9 @@ mvn clean test
 ```
 
 **Test Coverage:**
-- 13 total tests
+- 14 total tests
 - Payment service layer (5 tests)
-- Idempotency orchestration (5 tests)
+- Idempotency orchestration (6 tests)
 - Repository persistence (3 tests)
 
 All tests use H2 with PostgreSQL compatibility mode.
